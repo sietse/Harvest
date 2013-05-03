@@ -8,30 +8,37 @@ from urllib import urlencode
 import urllib2
 from xml.etree import ElementTree
 
-<<<<<<< HEAD
-'''
-import urllib2
-from base64 import b64encode
-from dateutil.parser import parse as parseDate
-from xml.dom.minidom import parseString
-=======
 from dateutil import parser as date_parser
->>>>>>> origin/new_version
 
 USER_AGENT = 'harvest.py'
+
+class HarvestError(Exception): pass
+
+class HarvestConnectionError(HarvestError): pass
 
 class Harvest(object):
     def __init__(self, url, email, password):
         self.base_url = url
         self.headers = {
-            'Authorization': 'Basic %s' % (
-                base64.b64encode('%s:%s' % (email, password))),
+            'Authorization': 'Basic %s' % (base64.b64encode(
+                '%s:%s' % (email, password))),
             'Accept': 'application/xml',
             'Content-Type': 'application/xml',
             'User-Agent': USER_AGENT,
             }
 
+    ##
+    # makes an HTTP request to Harvest, passing the provided arguments.
+    # Returns an ElementTree root object containing the xml response
+    #
+    # @param url the uniform resource locator being requested
+    # @keyparam data any post data to include.
+    # @keyparam method the REST method to use (GET, HEAD, POST, DELETE)
+    # @exception HarvestConnectionError if call to urlopen fails.
+    # @exception HarvestError if ElementTree parsing of results fails.
+    
     def _request(self, url, data=None, method=None):
+        
         request = HTTPRequest(
             url=self.base_url + url,
             headers=self.headers,
@@ -50,19 +57,44 @@ class Harvest(object):
         except ElementTree.ParseError, e:
             raise HarvestError('Parse Error', *e.args)
     
+    ##
+    # gets the next element in the collection 
+    #
+    # @params cls - an ElementTree Element, url - the Harvest API uri
+    # @return the next ElementTree Element from the _get_items generator
+    # @defreturn None if the generator is exausted
+    
     def _get_item(self, cls, url):
         try:
             return self._get_items(cls, url).next()
         except StopIteration:
             return None
-        
+    
+    ##
+    # A generator function that returns the next available child element
+    # with a matching element_name.
+    #
+    # @param cls the parent element
+    # @param url of the Harvest API for this element
+    
     def _get_items(self, cls, url):
+        
         root = self._request(url)
         for element in root.findall('.//%s' % cls.element_name):
             yield self._item_from_element(cls, element)
 
+    ##
+    # converts the element's text value into a Python base type of
+    # str, int, float, bool, or passes it to an appropriate parser
+    #
+    # @param cls the class of object to be returned
+    # @param element to parse
+    # @return a new instance of cls with a dictionary containing properties
+    
     def _item_from_element(self, cls, element):
+
         def to_python(typ_name, val):
+            # a closure...not sure why it's used here tho.
             try:
                 typ = dict(
                     str=str,
@@ -81,22 +113,29 @@ class Harvest(object):
                 return val
             
         data = {}
-        for prop in element.getchildren():
+        
+        # creates a dictionary of xml-tag:python typed value
+        # the ElementTree.Element.getchildren() method is depricated
+        #for prop in element.getchildren():
+        for prop in element.getiterator():
             data[prop.tag.replace('-', '_')] = to_python(
                 prop.attrib.get('type'), prop.text)
         return cls(self, data)
-        
-class HarvestError(Exception):
-    pass
 
-class HarvestConnectionError(HarvestError):
-    pass
+##
+# utility function used by many objects to build a url
+#
+# @param base_url something like https://[company].harvestapp.com
+# @param *parts any additional parts of the path needed
+# @keyparam **params any query string paramaters to include
+# @return urlencoded string representing full url.
 
-        
 def _build_url(base_url, *parts, **params):
     url = '/'.join([base_url] + map(str, parts))
-    
+    # sometime *parts contains an extra '/'
+    url = url.replace("//","/")
     if params:
+        # another closure...
         def to_str(obj):
             if isinstance(obj, datetime.datetime):
                 return obj.strftime('%Y-%m-%d %H:%M')
@@ -124,6 +163,12 @@ class HarvestItemBase(object):
         return '%s: %s' % (self.__class__.__name__,
                            getattr(self, 'name', None) or 
                            getattr(self, 'id', '<no id>'))
+
+##
+# converts a CamelCase string to a camel-Case string (with hyphens)
+#
+# @param name the string to convert
+# @return the converted string
 
 def _cls_to_element(name):
     return ''.join(
@@ -176,6 +221,9 @@ def _cache_items(f):
         
         if kwargs:
             cache_key = None
+        elif hasattr(obj, 'id'):
+            # cache_key for cls objects that are children of a specific obj
+            cache_key = '%s(%s)' % (cls.__name__, obj.id)
         else:
             cache_key = '%s(all)' % cls.__name__
             
@@ -296,145 +344,10 @@ class TaskAssignment(HarvestItemGettable):
     parent_items = [Project]
     
     def __str__(self):
-<<<<<<< HEAD
-        return 'invoice %d for client %d' % (self.id, self.client_id)
-
-    @property
-    def csv_line_items(self):
-        '''
-        Invoices from lists omit csv-line-items
-
-        '''
-        if not hasattr(self, '_csv_line_items'):
-            url = '%s/%s' % (self.base_url, self.id)
-            self._csv_line_items = self.harvest._get_element_values( url, self.element_name ).next().get('csv-line-items', '')
-        return self._csv_line_items
-
-    @csv_line_items.setter
-    def csv_line_items(self, val):
-        self._csv_line_items = val
-
-    def line_items(self):
-        import csv
-        return csv.DictReader(self.csv_line_items.split('\n'))
-
-
-class Harvest(object):
-    def __init__(self,uri,email,password):
-        self.uri = uri
-        self.headers={
-            'Authorization':'Basic '+b64encode('%s:%s' % (email,password)),
-            'Accept':'application/xml',
-            'Content-Type':'application/xml',
-            'User-Agent':'harvest.py',
-        }
-
-        # create getters
-        for klass in instance_classes:
-            self._create_getters( klass )
-
-    def _create_getters(self,klass):
-        '''
-        This method creates both the singular and plural getters for various
-        Harvest object classes.
-
-        '''
-        flag_name = '_got_' + klass.element_name
-        cache_name = '_' + klass.element_name
-
-        setattr( self, cache_name, {} )
-        setattr( self, flag_name, False )
-
-        cache = getattr( self, cache_name )
-
-        def _get_item(id):
-            if id in cache:
-                return cache[id]
-            else:
-                url = '%s/%d' % (klass.base_url, id)
-                item = self._get_element_values( url, klass.element_name ).next()
-                item = klass( self, item )
-                cache[id] = item
-                return item
-
-        setattr( self, klass.element_name, _get_item )
-
-        def _get_items():
-            if getattr( self, flag_name ):
-                for item in cache.values():
-                    yield item
-            else:
-                for element in self._get_element_values( klass.base_url, klass.element_name ):
-                    item = klass( self, element )
-                    cache[ item.id ] = item
-                    yield item
-
-                setattr( self, flag_name, True )
-
-        setattr( self, klass.plural_name, _get_items )
-
-    def find_user(self, first_name, last_name):
-        for person in self.users():
-            if first_name.lower() in person.first_name.lower() and last_name.lower() in person.last_name.lower():
-                return person
-
-        return None
-
-    def _time_entries(self,root,start,end):
-        url = root + 'entries?from=%s&to=%s' % (start.strftime('%Y%m%d'), end.strftime('%Y%m%d'))
-
-        for element in self._get_element_values( url, 'day-entry' ):
-            yield Entry( self, element )
-
-    def _request(self,url):
-        request = urllib2.Request( url=self.uri+url, headers=self.headers )
-        try:
-            r = urllib2.urlopen(request)
-            xml = r.read()
-            return parseString( xml )
-        except urllib2.URLError as e:
-            raise HarvestConnectionError(e)
-
-    def _get_element_values(self,url,tagname):
-        def get_element(element):
-            text = ''.join( n.data for n in element.childNodes if n.nodeType == n.TEXT_NODE )
-            try:
-                entry_type = element.getAttribute('type')
-                if entry_type == 'integer':
-                    try:
-                        return int( text )
-                    except ValueError:
-                        return 0
-                elif entry_type in ('date','datetime'):
-                    return parseDate( text )
-                elif entry_type == 'boolean':
-                    try:
-                        return text.strip().lower() in ('true', '1')
-                    except ValueError:
-                        return False
-                elif entry_type == 'decimal':
-                    try:
-                        return float( text )
-                    except ValueError:
-                        return 0.0
-                else:
-                    return text
-            except:
-                return text
-
-        xml = self._request(url)
-        for entry in xml.getElementsByTagName(tagname):
-            value = {}
-            for attr in entry.childNodes:
-                if attr.nodeType == attr.ELEMENT_NODE:
-                    tag = attr.tagName
-                    value[tag] = get_element( attr )
-=======
         return 'task %(task_id)s for project %(project_id)d' % self.__dict__
     
 class Invoice(HarvestPrimaryGettable):
     pass
->>>>>>> origin/new_version
 
 class InvoiceMessage(HarvestItemGettable):
     base_url = '/messages'
