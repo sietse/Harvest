@@ -293,7 +293,8 @@ class Entry(HarvestPrimaryGettable):
     get_url = '/daily/show'
 
     def __str__(self):
-        return 'task %(hours)0.02f hours for project %(project_id)d' % self.__dict__
+        return 'task %(hours)0.02f hours for project %(project_id)s' \
+                % self.__dict__
     
 class Client(HarvestPrimaryGettable):
     def projects(self):
@@ -338,13 +339,15 @@ class UserAssignment(HarvestItemGettable):
     parent_items = [Project]
     
     def __str__(self):
-        return 'user %(user_id)s for project %(project_id)d' % self.__dict__
+        return 'user %(user_id)s for project %(project_id)s' \
+                % self.__dict__
     
 class TaskAssignment(HarvestItemGettable):
     parent_items = [Project]
     
     def __str__(self):
-        return 'task %(task_id)s for project %(project_id)d' % self.__dict__
+        return 'task %(task_id)s for project %(project_id)s' \
+                % self.__dict__
     
 class Invoice(HarvestPrimaryGettable):
     pass
