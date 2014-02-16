@@ -1,2 +1,4 @@
 *.komodoproject
 build/*
+harvest.egg-info/*
+*.pyc
